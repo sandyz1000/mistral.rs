@@ -669,6 +669,7 @@ pub async fn build_text_pipeline(
         silent: !builder.with_logging,
         chat_template: builder.chat_template.clone(),
         jinja_explicit: builder.jinja_explicit.clone(),
+        max_model_len: None,
         mtp_config: builder.mtp_config.clone(),
     };
 
@@ -695,6 +696,7 @@ pub async fn build_multimodal_pipeline(
         write_uqff: builder.write_uqff.clone(),
         from_uqff: builder.from_uqff.clone(),
         max_edge: builder.max_edge,
+        max_model_len: builder.max_model_len,
         calibration_file: builder.calibration_file.clone(),
         imatrix: builder.imatrix.clone(),
         hf_cache_path: builder.hf_cache_path.clone(),
@@ -797,6 +799,7 @@ pub async fn build_multimodal_pipeline(
         silent: !builder.with_logging,
         chat_template: builder.chat_template.clone(),
         jinja_explicit: builder.jinja_explicit.clone(),
+        max_model_len: builder.max_model_len,
         mtp_config: builder.mtp_config.clone(),
     };
 
@@ -892,6 +895,7 @@ pub async fn build_gguf_pipeline(
         silent: !builder.with_logging,
         chat_template: builder.chat_template.clone(),
         jinja_explicit: builder.jinja_explicit.clone(),
+        max_model_len: None,
         mtp_config: None,
     };
 
@@ -952,6 +956,7 @@ pub async fn build_diffusion_pipeline(
         silent: !builder.with_logging,
         chat_template: None,
         jinja_explicit: None,
+        max_model_len: None,
         mtp_config: None,
     };
 
@@ -1018,6 +1023,7 @@ pub async fn build_speech_pipeline(
         silent: !builder.with_logging,
         chat_template: None,
         jinja_explicit: None,
+        max_model_len: None,
         mtp_config: None,
     };
 
@@ -1113,6 +1119,7 @@ pub async fn build_embedding_pipeline(
         silent: !builder.with_logging,
         chat_template: None,
         jinja_explicit: None,
+        max_model_len: None,
         mtp_config: None,
     };
 
@@ -1152,6 +1159,7 @@ pub async fn build_auto_pipeline(
         write_uqff: builder.write_uqff.clone(),
         from_uqff: builder.from_uqff.clone(),
         max_edge: builder.max_edge,
+        max_model_len: None,
         calibration_file: builder.calibration_file.clone(),
         imatrix: builder.imatrix.clone(),
         hf_cache_path: builder.hf_cache_path.clone(),
@@ -1266,6 +1274,7 @@ pub async fn build_auto_pipeline(
         silent: !builder.with_logging,
         chat_template: builder.chat_template.clone(),
         jinja_explicit: builder.jinja_explicit.clone(),
+        max_model_len: None,
         mtp_config: builder.mtp_config.clone(),
     };
 

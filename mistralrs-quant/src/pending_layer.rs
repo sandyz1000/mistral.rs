@@ -133,6 +133,14 @@ impl QuantMethod for PendingIsqLayer {
         self.resolve()?.gather_forward_raw(a, indices)
     }
 
+    fn embedding_forward(&self, ids: &Tensor, output_dtype: DType) -> Result<Tensor> {
+        self.resolve()?.embedding_forward(ids, output_dtype)
+    }
+
+    fn embedding_forward_raw(&self, ids: &Tensor) -> Result<Tensor> {
+        self.resolve()?.embedding_forward_raw(ids)
+    }
+
     #[cfg(feature = "cuda")]
     fn get_qtensor(&self) -> Option<Arc<candle_core::quantized::QTensor>> {
         self.resolve().ok()?.get_qtensor()
@@ -175,6 +183,11 @@ impl QuantMethod for PendingIsqLayer {
 
     fn unquant_weight_bias(&self) -> Option<(Tensor, Option<Tensor>)> {
         self.resolve().ok()?.unquant_weight_bias()
+    }
+
+    fn is_dynamic_lora_active(&self) -> bool {
+        self.resolve()
+            .is_ok_and(|layer| layer.is_dynamic_lora_active())
     }
 
     fn has_bias(&self) -> bool {

@@ -2,7 +2,7 @@
 
 use crate::layers_masker::CausalMaskConfig;
 use candle_core::{DType, Device, Module, Result, Tensor, D};
-use candle_nn::{Embedding, Linear};
+use candle_nn::Linear;
 use mistralrs_quant::{
     ColumnParallelLayer, QuantMethod, QuantizedConfig, ReplicatedLayer, RowParallelLayer,
     ShardedVarBuilder,
@@ -21,7 +21,10 @@ use crate::{
     kv_cache::{
         HybridCache, HybridCacheConfig, HybridLayerCache, HybridLayerType, RecurrentLayerConfig,
     },
-    layers::{embedding, linear_no_bias, CausalMasker, GemmaRmsNorm, RotaryEmbedding, Sdpa},
+    layers::{
+        embedding_with_legacy_tied_uqff, linear_no_bias, CausalMasker, GemmaRmsNorm,
+        RotaryEmbedding, Sdpa,
+    },
     layers_masker::PastKvLenCache,
     moe::{MoEExperts, MoEExpertsConfig},
     paged_attention::{AttentionImplementation, ModelConfigMetadata, PagedAttention},
@@ -361,9 +364,11 @@ impl FullAttention {
 /// Sparse MoE block with shared expert and shared expert gate
 struct SparseMoeBlock {
     gate: Linear,
+    gate_lora: Option<Arc<mistralrs_quant::LoraSiteHandle>>,
     experts: MoEExperts,
     shared_expert: crate::layers::Mlp,
     shared_expert_gate: Linear,
+    shared_expert_gate_lora: Option<Arc<mistralrs_quant::LoraSiteHandle>>,
     num_experts_per_tok: usize,
     norm_topk_prob: bool,
 }
@@ -384,11 +389,11 @@ impl SparseMoeBlock {
             .cloned()
             .unwrap_or(real_device);
 
-        // Router gate
-        let gate = linear_no_bias(
-            cfg.hidden_size,
-            cfg.num_experts,
-            vb.pp("gate").set_device(layer_device.clone()),
+        let gate_vb = vb.pp("gate").set_device(layer_device.clone());
+        let gate = linear_no_bias(cfg.hidden_size, cfg.num_experts, gate_vb.clone())?;
+        let gate_lora = mistralrs_quant::register_dynamic_lora_site(
+            &gate_vb,
+            mistralrs_quant::LoraLinearSpec::replicated(cfg.hidden_size, cfg.num_experts),
         )?;
 
         let moe_cfg = MoEExpertsConfig {
@@ -396,6 +401,7 @@ impl SparseMoeBlock {
             num_experts_per_tok: cfg.num_experts_per_tok,
             hidden_size: cfg.hidden_size,
             moe_intermediate_size: cfg.moe_intermediate_size,
+            expert_proj_names: crate::moe::ExpertProjNames::DEFAULT,
         };
 
         let experts = MoEExperts::new(
@@ -419,19 +425,24 @@ impl SparseMoeBlock {
         )?;
 
         // Shared expert gate: (1, hidden_size) -> sigmoid
-        let mut seg_w = vb
-            .pp("shared_expert_gate")
-            .get((1, cfg.hidden_size), "weight")?;
+        let shared_expert_gate_vb = vb.pp("shared_expert_gate");
+        let mut seg_w = shared_expert_gate_vb.get((1, cfg.hidden_size), "weight")?;
         if loading_isq {
             seg_w = seg_w.to_device(&layer_device)?;
         }
         let shared_expert_gate = Linear::new(seg_w, None);
+        let shared_expert_gate_lora = mistralrs_quant::register_dynamic_lora_site(
+            &shared_expert_gate_vb.set_device(layer_device),
+            mistralrs_quant::LoraLinearSpec::replicated(cfg.hidden_size, 1),
+        )?;
 
         Ok(Self {
             gate,
+            gate_lora,
             experts,
             shared_expert,
             shared_expert_gate,
+            shared_expert_gate_lora,
             num_experts_per_tok: cfg.num_experts_per_tok,
             norm_topk_prob: cfg.norm_topk_prob,
         })
@@ -442,6 +453,10 @@ impl SparseMoeBlock {
         let xs_flat = xs.reshape(((), hidden_dim))?;
 
         let router_logits = self.gate.forward(&xs_flat)?;
+        let router_logits = match &self.gate_lora {
+            Some(site) => mistralrs_quant::apply_dynamic_lora_delta(site, &xs_flat, router_logits)?,
+            None => router_logits,
+        };
         let topk = crate::ops::moe_router_topk(
             &router_logits,
             crate::ops::MoeRouterTopKConfig {
@@ -463,11 +478,12 @@ impl SparseMoeBlock {
         // 3. Shared expert with sigmoid gating
         let shared_out = self.shared_expert.forward(xs)?;
 
-        let shared_gate = candle_nn::ops::sigmoid(
-            &self
-                .shared_expert_gate
-                .forward(&xs.reshape(((), hidden_dim))?)?,
-        )?;
+        let shared_gate = self.shared_expert_gate.forward(&xs_flat)?;
+        let shared_gate = match &self.shared_expert_gate_lora {
+            Some(site) => mistralrs_quant::apply_dynamic_lora_delta(site, &xs_flat, shared_gate)?,
+            None => shared_gate,
+        };
+        let shared_gate = candle_nn::ops::sigmoid(&shared_gate)?;
         let shared_gate = shared_gate.reshape((b_size, seq_len, 1))?;
         let shared_out = shared_out.broadcast_mul(&shared_gate)?;
 
@@ -538,11 +554,12 @@ impl DecoderLayer {
 
 #[allow(dead_code)]
 pub struct Model {
-    embed_tokens: Embedding,
+    embed_tokens: Arc<dyn QuantMethod>,
     layers: Vec<DecoderLayer>,
     layer_types: Vec<LayerType>,
     norm: GemmaRmsNorm,
     lm_head: Arc<dyn QuantMethod>,
+    dtype: DType,
     kv_cache: EitherCache,
     device: Device,
     mapper: Box<dyn DeviceMapper + Send + Sync>,
@@ -571,15 +588,19 @@ impl Model {
         }
 
         let mapper = normal_loading_metadata.mapper;
+        let dtype = vb_m.dtype();
 
         if !cfg.mlp_only_layers.is_empty() {
             candle_core::bail!("Qwen3Next `mlp_only_layers` is not implemented yet in mistral.rs.");
         }
 
-        let embed_tokens = embedding(
+        let embed_tokens = embedding_with_legacy_tied_uqff(
             cfg.vocab_size,
             cfg.hidden_size,
-            mapper.set_nm_device(vb_m.pp("embed_tokens"), false),
+            mapper.set_nm_device(vb_m.pp("embed_tokens"), normal_loading_metadata.loading_isq),
+            cfg.tie_word_embeddings.then(|| {
+                mapper.set_nm_device(vb_lm_head.clone(), normal_loading_metadata.loading_isq)
+            }),
             &cfg.quantization_config,
         )?;
 
@@ -592,16 +613,7 @@ impl Model {
                 mapper.set_nm_device(vb_lm_head, normal_loading_metadata.loading_isq),
             )?
         } else {
-            ReplicatedLayer::from_linear(
-                candle_nn::Linear::new(
-                    mapper.cast_nm_device(
-                        embed_tokens.embeddings(),
-                        normal_loading_metadata.loading_isq,
-                    )?,
-                    None,
-                ),
-                mapper.set_nm_device(vb_lm_head, normal_loading_metadata.loading_isq),
-            )?
+            embed_tokens.clone()
         };
 
         let norm = GemmaRmsNorm::new(
@@ -770,6 +782,7 @@ impl Model {
             layer_types,
             norm,
             lm_head,
+            dtype,
             kv_cache: EitherCache::Hybrid(pipeline_cache),
             device: normal_loading_metadata.real_device,
             cfg: ModelConfigMetadata {
@@ -795,7 +808,7 @@ impl Model {
         input_ids: &Tensor,
         ctx: &mut crate::pipeline::ModelForwardContext<'_>,
     ) -> Result<Tensor> {
-        let mut x = self.embed_tokens.forward(input_ids)?;
+        let mut x = self.embed_tokens.embedding_forward(input_ids, self.dtype)?;
 
         let mut hybrid_cache = self.kv_cache.hybrid();
         let recurrent_metadata = ctx.recurrent_metadata().cloned();
