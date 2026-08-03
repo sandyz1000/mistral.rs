@@ -1,0 +1,22 @@
+[package]
+name = "mistralrs-expert-extract"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Extract MoE experts from GGUF into per-expert files for SSD streaming"
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+license.workspace = true
+homepage.workspace = true
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+candle-core.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true

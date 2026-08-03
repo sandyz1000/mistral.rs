@@ -35,6 +35,23 @@ pub struct ModelSourceOptions {
     #[arg(long, default_value = "auto", value_parser = parse_dtype)]
     #[serde(default)]
     pub dtype: ModelDType,
+
+    /// Directory containing per-expert files extracted by mistralrs-expert-extract
+    #[arg(long)]
+    pub ssd_moe: Option<PathBuf>,
+
+    /// Number of expert cache slots (RAM budget = slots × expert_size)
+    #[arg(long, default_value_t = 256)]
+    #[serde(default = "default_ssd_cache_slots")]
+    pub ssd_moe_cache_slots: usize,
+
+    /// Number of experts to speculatively prefetch per token.
+    #[arg(long, default_value_t = 0)]
+    pub ssd_moe_prefetch: usize,
+
+    /// Enable locality monitor for hot-expert pinning.
+    #[arg(long)]
+    pub ssd_moe_locality: bool,
 }
 
 /// Format options for model loading
@@ -440,6 +457,10 @@ fn default_max_seq_len() -> usize {
 
 fn default_max_batch_size() -> usize {
     AutoDeviceMapParams::DEFAULT_MAX_BATCH_SIZE
+}
+
+fn default_ssd_cache_slots() -> usize {
+    256
 }
 
 #[cfg(test)]

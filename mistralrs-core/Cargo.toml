@@ -111,6 +111,8 @@ mistralrs-code-exec.workspace = true
 mistralrs-sandbox.workspace = true
 statrs.workspace = true
 openai-harmony = "0.0.8"
+lru = { version = "0.12", optional = true }
+io-uring = { version = "0.6", optional = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios", target_os = "tvos"))'.dependencies]
 objc = { workspace = true, optional = true }
@@ -147,6 +149,8 @@ nccl = ["cuda", "mistralrs-quant/nccl"]
 utoipa = ["dep:utoipa"]
 ring = ["mistralrs-quant/ring"]
 code-execution = []
+ssd-moe = ["dep:lru"]
+io-uring = ["ssd-moe", "dep:io-uring"]
 
 [build-dependencies]
 cudaforge = { workspace = true, optional = true }

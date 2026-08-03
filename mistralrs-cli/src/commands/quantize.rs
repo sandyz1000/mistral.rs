@@ -392,6 +392,10 @@ fn convert_to_model_selected(
                 hf_cache_path: device.hf_cache.clone(),
                 matformer_config_path: None,
                 matformer_slice_name: None,
+                ssd_moe: None,
+                ssd_moe_cache_slots: 256,
+                ssd_moe_prefetch: 0,
+                ssd_moe_locality: false,
             };
             Ok((model_selected, device.cpu, device.device_layers.clone()))
         }

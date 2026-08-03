@@ -55,6 +55,8 @@ mod metal;
 pub use metal::warmup_metal_kernels;
 mod model_loader;
 mod moe;
+#[cfg(feature = "ssd-moe")]
+pub mod ssd_moe;
 mod ops;
 mod video_input;
 pub use model_loader::{

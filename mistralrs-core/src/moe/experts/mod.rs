@@ -32,6 +32,9 @@ use checkpoint::ExpertCheckpoint;
 use config::{BackendChoice, MoEExpertsBackend};
 use forward::{MoEForward, MoEForwardConfig, MoEForwardShape};
 
+#[cfg(feature = "ssd-moe")]
+use crate::ssd_moe::SsdMoeBackend;
+
 /// MoE experts layer without the gate; the caller computes routing weights + topk indices.
 pub struct MoEExperts {
     backend: MoEExpertsBackendImpl,
@@ -51,6 +54,8 @@ enum MoEExpertsBackendImpl {
     #[cfg(feature = "cuda")]
     Cutlass(CutlassExpertsWeights),
     Fast(FastExpertsWeights),
+    #[cfg(feature = "ssd-moe")]
+    Ssd(Box<SsdMoeBackend>),
 }
 
 impl MoEExpertsBackendImpl {
@@ -66,6 +71,8 @@ impl MoEExpertsBackendImpl {
                 .forward_impl(forward, config)
                 .map_err(|err| err.context("moe experts cutlass")),
             Self::Fast(w) => w.forward_impl(forward, config),
+            #[cfg(feature = "ssd-moe")]
+            Self::Ssd(b) => b.forward(forward.xs, forward.topk_weights, forward.topk_ids),
         }
     }
 }
@@ -87,6 +94,25 @@ fn check_isq_gather_support() -> Result<()> {
 }
 
 impl MoEExperts {
+    /// Create MoEExperts from a pre-built SSD backend — skips all VarBuilder / weight loading.
+    #[cfg(feature = "ssd-moe")]
+    pub fn new_ssd(
+        backend: SsdMoeBackend,
+        cfg: &MoEExpertsConfig,
+        comm: &Arc<mistralrs_quant::Comm>,
+        act: Activation,
+    ) -> Self {
+        Self {
+            backend: MoEExpertsBackendImpl::Ssd(Box::new(backend)),
+            lora_site: None,
+            act,
+            num_experts: cfg.num_experts,
+            num_experts_per_tok: cfg.num_experts_per_tok,
+            all_reduce: SumAllReduce::new(comm),
+            world_size: comm.world_size(),
+        }
+    }
+
     /// Create MoEExperts for a standard model: experts live under `vb.pp("experts")`.
     pub fn new(
         cfg: &MoEExpertsConfig,
@@ -332,6 +358,8 @@ impl MoEExperts {
         // Sharded experts produce partial sums; replicated ones are already complete.
         let sharded = match &self.backend {
             MoEExpertsBackendImpl::Fast(w) => w.sharded,
+            #[cfg(feature = "ssd-moe")]
+            MoEExpertsBackendImpl::Ssd(_) => false,
             _ => true,
         };
         if self.world_size > 1 && sharded {

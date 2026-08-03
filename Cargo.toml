@@ -16,6 +16,7 @@ members = [
     "mistralrs-macros",
     "mistralrs-code-exec",
     "mistralrs-sandbox",
+    "mistralrs-expert-extract",
 ]
 resolver = "2"
 

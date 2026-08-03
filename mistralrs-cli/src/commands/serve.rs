@@ -372,6 +372,10 @@ pub(crate) fn convert_to_model_selected(
                 hf_cache_path: device.hf_cache.clone(),
                 matformer_config_path: matformer.config_path.clone(),
                 matformer_slice_name: matformer.slice_name.clone(),
+                ssd_moe: model.ssd_moe.clone(),
+                ssd_moe_cache_slots: model.ssd_moe_cache_slots,
+                ssd_moe_prefetch: model.ssd_moe_prefetch,
+                ssd_moe_locality: model.ssd_moe_locality,
             })
         }
 
@@ -1203,6 +1207,10 @@ mod tests {
             tokenizer: None,
             arch: None,
             dtype: ModelDType::Auto,
+            ssd_moe: None,
+            ssd_moe_cache_slots: 256,
+                ssd_moe_prefetch: 0,
+                ssd_moe_locality: false,
         }
     }
 

@@ -129,6 +129,22 @@ pub enum ModelSelected {
         /// Name of the Matryoshka Transformer slice to use
         #[arg(long)]
         matformer_slice_name: Option<String>,
+
+        /// Directory containing per-expert files for SSD-streamed MoE.
+        #[arg(long)]
+        ssd_moe: Option<PathBuf>,
+
+        /// Number of expert cache slots for SSD MoE.
+        #[arg(long, default_value_t = 256)]
+        ssd_moe_cache_slots: usize,
+
+        /// Number of experts to speculatively prefetch per token (0 = disabled).
+        #[arg(long, default_value_t = 0)]
+        ssd_moe_prefetch: usize,
+
+        /// Enable the locality monitor for hot-expert pinning.
+        #[arg(long)]
+        ssd_moe_locality: bool,
     },
 
     /// Select a plain model, without quantization or adapters

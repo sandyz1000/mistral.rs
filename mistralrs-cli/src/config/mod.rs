@@ -250,6 +250,10 @@ impl ModelEntry {
             tokenizer: self.tokenizer.clone(),
             arch: self.arch.clone(),
             dtype: self.dtype,
+            ssd_moe: None,
+            ssd_moe_cache_slots: 256,
+                ssd_moe_prefetch: 0,
+                ssd_moe_locality: false,
         };
 
         let device = self.device.to_device_options(cpu);

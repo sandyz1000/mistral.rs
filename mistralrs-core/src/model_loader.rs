@@ -17,6 +17,9 @@ use crate::{
     UQFF_MULTI_FILE_DELIMITER,
 };
 
+#[cfg(feature = "ssd-moe")]
+use crate::ssd_moe::SsdMoeConfig;
+
 /// A builder for a loader using the selected model.
 pub struct LoaderBuilder {
     model: ModelSelected,
@@ -314,7 +317,20 @@ fn loader_from_model_selected(args: LoaderBuilder) -> anyhow::Result<Box<dyn Loa
             hf_cache_path,
             matformer_config_path,
             matformer_slice_name,
+            ssd_moe,
+            ssd_moe_cache_slots,
+            ssd_moe_prefetch,
+            ssd_moe_locality,
         } => {
+            #[cfg(feature = "ssd-moe")]
+            let ssd_moe_config = ssd_moe.map(|dir| {
+                SsdMoeConfig::new(dir)
+                    .with_cache_slots(ssd_moe_cache_slots)
+                    .with_prefetch(ssd_moe_prefetch)
+                    .with_locality(ssd_moe_locality)
+            });
+            #[cfg(not(feature = "ssd-moe"))]
+            let _ = (&ssd_moe, &ssd_moe_cache_slots, &ssd_moe_prefetch, &ssd_moe_locality);
             let builder = AutoLoaderBuilder::new(
                 NormalSpecificConfig {
                     topology: Topology::from_option_path(topology.clone())?,

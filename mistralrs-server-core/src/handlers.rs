@@ -479,6 +479,10 @@ pub async fn tune_model(
         hf_cache_path: None,
         matformer_config_path: None,
         matformer_slice_name: None,
+        ssd_moe: None,
+        ssd_moe_cache_slots: 256,
+                ssd_moe_prefetch: 0,
+                ssd_moe_locality: false,
     };
 
     let requested_isq = match request.requested_isq {

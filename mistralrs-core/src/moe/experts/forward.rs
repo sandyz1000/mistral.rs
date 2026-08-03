@@ -52,7 +52,7 @@ impl MoEForwardShape {
     }
 }
 
-pub(super) struct MoEForward<'a> {
+pub(crate) struct MoEForward<'a> {
     pub xs: &'a Tensor,
     pub xs_flat: &'a Tensor,
     pub topk_weights: &'a Tensor,
@@ -63,7 +63,7 @@ pub(super) struct MoEForward<'a> {
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct MoEForwardConfig {
+pub(crate) struct MoEForwardConfig {
     #[cfg_attr(not(feature = "cuda"), allow(dead_code))]
     pub num_experts: usize,
     pub num_experts_per_tok: usize,
